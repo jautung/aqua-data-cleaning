@@ -7,7 +7,7 @@ def main():
     clssfr = classifier.Classifier()
     nmlzr = normalizer.Normalizer()
 
-    data_tables = rdr.get_data_tables(100)
+    data_tables = rdr.get_data_tables()
     for data_table in data_tables:
         col_idx = 0
         while True:
@@ -30,7 +30,7 @@ def main():
                 norm_records = nmlzr.normalize_default(records)
 
             # condition added for debug filtering of results
-            if category == "QUANTITATIVE_PERCENTAGE":
+            if category == "TEMPORAL":
                 print("====================================================================================")
                 print("Column      :", data_table.csv_file, "(Column " + str(col_idx) + ")")
                 print("Header      :", header)

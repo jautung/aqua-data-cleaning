@@ -4,12 +4,13 @@ import dateutil.parser
 class Classifier:
     # @max_records_checked: max number of records we check for a specific format
     #   - higher values mean more accuracy, but slower program execution
+    #   - None means no limit, i.e. check all of the records
     # @threshold_for_match: fraction of those records that need to match to be classified
     # @ordinal_bound: bound for which we will be able to recognize ordinals
     # @categorical_distinctness_threshold: upper bound on fraction of distinct records needed to be categorical
     #   - higher values mean we accept more things to be categorical
-    def __init__(self, max_records_checked=50, 
-                       threshold_for_match=0.8,
+    def __init__(self, max_records_checked=None,
+                       threshold_for_match=1.0,
                        ordinal_bound=1000,
                        categorical_distinctness_threshold=0.1):
         self.max_records_checked = max_records_checked
@@ -32,23 +33,18 @@ class Classifier:
     #  - "CATEGORICAL"
     #  - "UNSTRUCTURED"
     def classify(self, header, records):
-        # header checkers
-        if header.lower() == "date" or header.lower() == "year":
-            return "TEMPORAL"
-        if header.lower() == "price":
-            return "QUANTITATIVE_MONEY"
-        if header.lower() == "distance" or header.lower() == "length":
-            return "QUANTITATIVE_LENGTH"
-
-        # record checkers
-        records_to_check = min(self.max_records_checked, len(records))
+        # determining number of records to check
+        if self.max_records_checked == None:
+            records_to_check = len(records)
+        else:
+            records_to_check = min(self.max_records_checked, len(records))
 
         # ordinal
         num_ordinals_found = 0
         for record_idx in range(records_to_check):
             if records[record_idx].lower() in self.ordinals:
                 num_ordinals_found += 1
-        if num_ordinals_found > self.threshold_for_match * records_to_check:
+        if num_ordinals_found >= self.threshold_for_match * records_to_check:
             return "ORDINAL"
 
         # temporal
@@ -67,7 +63,7 @@ class Classifier:
                     pass
                 else:
                     num_temporals_found += 1
-        if num_temporals_found > self.threshold_for_match * records_to_check:
+        if num_temporals_found >= self.threshold_for_match * records_to_check:
             return "TEMPORAL"
 
         # quantitative money
@@ -75,7 +71,7 @@ class Classifier:
         for record_idx in range(records_to_check):
             if records[record_idx].startswith("$"):
                 num_money_found += 1
-        if num_money_found > self.threshold_for_match * records_to_check:
+        if num_money_found >= self.threshold_for_match * records_to_check:
             return "QUANTITATIVE_MONEY"
 
         # quantitative percentage
@@ -83,7 +79,7 @@ class Classifier:
         for record_idx in range(records_to_check):
             if records[record_idx].endswith("%"):
                 num_percentage_found += 1
-        if num_percentage_found > self.threshold_for_match * records_to_check:
+        if num_percentage_found >= self.threshold_for_match * records_to_check:
             return "QUANTITATIVE_PERCENTAGE"
 
         # categorical variable test
@@ -102,7 +98,7 @@ class Classifier:
                 pass
             else:
                 num_quantities_found += 1
-        if num_quantities_found > self.threshold_for_match * records_to_check:
+        if num_quantities_found >= self.threshold_for_match * records_to_check:
             return "QUANTITATIVE_OTHER"
 
         return "UNSTRUCTURED"
