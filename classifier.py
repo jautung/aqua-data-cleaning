@@ -87,7 +87,7 @@ class Classifier:
         distinct_records = set()
         for record in records:
             distinct_records.add(record)
-        if len(distinct_records) < 0.2 * len(records):
+        if len(distinct_records) < self.categorical_distinctness_threshold * len(records):
             return "CATEGORICAL"
 
         num_quantities_found = 0
