@@ -2,12 +2,14 @@ import reader
 import classifier
 import normalizer
 
-def debug():
+# runs the classifier and the normalizer on all data tables, up to a limit of num_tables
+# prints to stdout the result for all columns that got classified into one of the filter_categories
+def classify_normalize_all(num_tables=None, filter_categories=[]):
     rdr = reader.Reader()
     clssfr = classifier.Classifier()
     nmlzr = normalizer.Normalizer()
 
-    data_tables = rdr.get_data_tables()
+    data_tables = rdr.get_data_tables(num_tables)
     for data_table in data_tables:
         col_idx = 0
         while True:
@@ -16,7 +18,7 @@ def debug():
                 break
 
             (header, records) = col
-            category = clssfr.classify(header, records)
+            category = clssfr.classify(col_idx, header, records)
 
             if category == "ORDINAL":
                 norm_records = nmlzr.normalize_ordinal(records)
@@ -24,16 +26,16 @@ def debug():
                 (norm_records, vega_lite_timeunit) = nmlzr.normalize_temporal(records)
             elif category == "QUANT_MONEY":
                 norm_records = nmlzr.normalize_money(records)
-            elif category == "QUANT_PERCENTAGE":
+            elif category == "QUANT_PERCENT":
                 norm_records = nmlzr.normalize_percentage(records)
             else:  # other categories
                 norm_records = nmlzr.normalize_default(records)
 
-            # condition added for debug filtering of results
-            if category == "TEMPORAL":
+            # filtering of results
+            if category in filter_categories:
                 print("====================================================================================")
                 print("Column      :", data_table.csv_file, "(Column " + str(col_idx) + ")")
-                print("Header      :", header)
+                print("Header      :", repr(header))
                 meta = data_table.get_meta()
                 if meta != None:
                     print("Meta        :", meta)
@@ -49,8 +51,9 @@ def debug():
 
             col_idx += 1
 
-# verbose to print out all results, not verbose to print out only incorrect classifications
-def classify_test(verbose=True):
+# add verbose to print out all results, not verbose to print out only incorrect classifications
+# tests are currently manually-labeled columns of some of the .csv files
+def classification_test(verbose=True):
     rdr = reader.Reader()
     clssfr = classifier.Classifier()
 
@@ -65,7 +68,7 @@ def classify_test(verbose=True):
                 break
 
             (header, records) = col
-            classified_type = clssfr.classify(header, records)
+            classified_type = clssfr.classify(col_idx, header, records)
             correct_type = data_table.get_type(col_idx)
             if verbose or classified_type != correct_type:
                 print("Column    :", data_table.csv_file, "(Column " + str(col_idx) + ")")
@@ -76,6 +79,7 @@ def classify_test(verbose=True):
             if classified_type == correct_type:
                 correct_count += 1
             else:
+                print("Header    :", repr(header))
                 print("Records   :", records)
                 print()
             total_count += 1
@@ -83,7 +87,7 @@ def classify_test(verbose=True):
             col_idx += 1
 
     print("===================================================")
-    print("Overall result:", str(correct_count) + "/" + str(total_count), "correct classifications")
+    print("Overall result:", str(correct_count) + "/" + str(total_count), "(" + str(round(correct_count / total_count * 100, 2)) + "%)", "correct classifications")
 
 if __name__ == "__main__":
-    classify_test(verbose=True)
+    classify_normalize_all(500, ["TEMPORAL"])

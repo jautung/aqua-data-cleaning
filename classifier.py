@@ -21,6 +21,7 @@ class Classifier:
             self.ordinals.add(num2words.num2words(i, to="ordinal_num"))
         self.categorical_distinctness_threshold = categorical_distinctness_threshold
 
+    # @col_idx: the column index in a DataTable
     # @header: the column header in a DataTable
     # @records: a list of records for that column
     # returns one of the following categories (strings)
@@ -29,11 +30,28 @@ class Classifier:
     #  - "QUANT_MONEY"
     #  - "QUANT_LENGTH"
     #  - "QUANT_AREA"
-    #  - "QUANT_PERCENTAGE"
+    #  - "QUANT_PERCENT"
     #  - "QUANT_OTHER"
     #  - "CATEGORICAL"
     #  - "STRING"
-    def classify(self, header, records):
+    #  - "ROW_NUM" (this is meaningless)
+    def classify(self, col_idx, header, records):
+        # some tables have the first column just being the row number
+        if col_idx == 0:
+            is_row_num = True
+            for record_idx in range(len(records)):
+                try:
+                    record_num = float (records[record_idx])
+                except ValueError:
+                    is_row_num = False
+                    break
+                else:
+                    if record_idx + 1 != record_num:
+                        is_row_num = False
+                        break
+            if is_row_num:
+                return "ROW_NUM"
+
         # determining number of records to check
         if self.max_records_checked == None:
             records_to_check = len(records)
@@ -81,7 +99,7 @@ class Classifier:
             if records[record_idx].endswith("%"):
                 num_percentage_found += 1
         if num_percentage_found >= self.threshold_for_match * records_to_check:
-            return "QUANT_PERCENTAGE"
+            return "QUANT_PERCENT"
 
         # categorical variable test
         # https://datascience.stackexchange.com/questions/9892/how-can-i-dynamically-distinguish-between-categorical-data-and-numerical-data
