@@ -19,19 +19,20 @@ class Classifier:
         for i in range(ordinal_bound):
             self.ordinals.add(num2words.num2words(i, to="ordinal").lower())
             self.ordinals.add(num2words.num2words(i, to="ordinal_num"))
+        self.categorical_distinctness_threshold = categorical_distinctness_threshold
 
     # @header: the column header in a DataTable
     # @records: a list of records for that column
     # returns one of the following categories (strings)
     #  - "ORDINAL"
     #  - "TEMPORAL"
-    #  - "QUANTITATIVE_MONEY"
-    #  - "QUANTITATIVE_LENGTH"
-    #  - "QUANTITATIVE_AREA"
-    #  - "QUANTITATIVE_PERCENTAGE"
-    #  - "QUANTITATIVE_OTHER"
+    #  - "QUANT_MONEY"
+    #  - "QUANT_LENGTH"
+    #  - "QUANT_AREA"
+    #  - "QUANT_PERCENTAGE"
+    #  - "QUANT_OTHER"
     #  - "CATEGORICAL"
-    #  - "UNSTRUCTURED"
+    #  - "STRING"
     def classify(self, header, records):
         # determining number of records to check
         if self.max_records_checked == None:
@@ -72,7 +73,7 @@ class Classifier:
             if records[record_idx].startswith("$"):
                 num_money_found += 1
         if num_money_found >= self.threshold_for_match * records_to_check:
-            return "QUANTITATIVE_MONEY"
+            return "QUANT_MONEY"
 
         # quantitative percentage
         num_percentage_found = 0
@@ -80,7 +81,7 @@ class Classifier:
             if records[record_idx].endswith("%"):
                 num_percentage_found += 1
         if num_percentage_found >= self.threshold_for_match * records_to_check:
-            return "QUANTITATIVE_PERCENTAGE"
+            return "QUANT_PERCENTAGE"
 
         # categorical variable test
         # https://datascience.stackexchange.com/questions/9892/how-can-i-dynamically-distinguish-between-categorical-data-and-numerical-data
@@ -99,6 +100,6 @@ class Classifier:
             else:
                 num_quantities_found += 1
         if num_quantities_found >= self.threshold_for_match * records_to_check:
-            return "QUANTITATIVE_OTHER"
+            return "QUANT_OTHER"
 
-        return "UNSTRUCTURED"
+        return "STRING"

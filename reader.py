@@ -38,7 +38,7 @@ class DataTable:
             types = line.split(",")
             if col_idx >= len(types):
                 return None
-            return types[col_idx]
+            return types[col_idx].strip()
 
 class Reader:
     def __init__(self):
@@ -69,4 +69,18 @@ class Reader:
                     if limit != None and num_data_tables >= limit:
                         return data_tables
 
+        return data_tables
+
+    # returns a list of test DataTables, i.e. csv files that have been correctly classified
+    def get_classifier_test_data_tables(self):
+        data_tables = []
+        folders = [folder for folder in os.listdir(".") if os.path.isdir(folder)]
+        for folder in folders:
+            files = set(os.listdir(folder))
+            for file in files:
+                (filename, extension) = os.path.splitext(file)
+                if extension == ".test":
+                    test_filepath = os.path.join(folder, file)
+                    csv_filepath = os.path.join(folder, filename + ".csv")
+                    data_tables.append(DataTable(csv_filepath, None, test_filepath))
         return data_tables
