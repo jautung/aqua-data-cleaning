@@ -15,10 +15,12 @@ class Classifier:
     # @ordinal_bound: bound for which we will be able to recognize ordinals
     # @categorical_distinctness_threshold: upper bound on fraction of distinct/total to be classified as categorical
     #   - higher values mean we accept more things to be categorical
+    # @year_bounds: tuple of (start_year, end_year) inclusive that we should classify quantitative columns as years (temporal) instead
     def __init__(self, max_records_checked=None,
                        threshold_for_match=1.0,
                        ordinal_bound=1000,
-                       categorical_distinctness_threshold=0.1):
+                       categorical_distinctness_threshold=0.1,
+                       year_bounds=(1000, 3000)):
         self.max_records_checked = max_records_checked
         self.threshold_for_match = threshold_for_match
         self.ordinals = set()
@@ -26,6 +28,7 @@ class Classifier:
             self.ordinals.add(num2words.num2words(i, to="ordinal").lower())
             self.ordinals.add(num2words.num2words(i, to="ordinal_num"))
         self.categorical_distinctness_threshold = categorical_distinctness_threshold
+        self.year_bounds = year_bounds
 
     # @col_idx: the column index in a DataTable
     # @header: the column header in a DataTable
@@ -50,7 +53,7 @@ class Classifier:
             is_row_num = True
             for record_idx in range(len(records)):
                 try:
-                    record_num = float(records[record_idx])
+                    record_num = float(records[record_idx].replace(",", "").replace(" ", ""))
                 except ValueError:
                     is_row_num = False
                     break
@@ -84,7 +87,7 @@ class Classifier:
         for record_idx in range(records_to_check):
             try:
                 # ensures that dateutil is not just recognizing one random float as a date
-                float(records[record_idx])
+                float(records[record_idx].replace(",", "").replace(" ", ""))
             except ValueError:
                 try:
                     dateutil.parser.parse(records[record_idx])
@@ -102,8 +105,8 @@ class Classifier:
                 (first, second) = records[record_idx].split("-")
                 try:
                     # ensures that dateutil is not just recognizing random floats as a date
-                    float(first.replace(",", ""))
-                    float(second.replace(",", ""))
+                    float(first.replace(",", "").replace(" ", ""))
+                    float(second.replace(",", "").replace(" ", ""))
                 except ValueError:
                     try:
                         dateutil.parser.parse(first)
@@ -117,18 +120,30 @@ class Classifier:
 
         # quant range checker
         num_quant_ranges_found = 0
+        num_can_be_years_found = 0
         for record_idx in range(records_to_check):
             if records[record_idx].count("-") == 1:
                 (first, second) = records[record_idx].split("-")
                 try:
-                    float(first.replace(",", ""))
-                    float(second.replace(",", ""))
+                    float(first.replace(",", "").replace(" ", ""))
+                    float(second.replace(",", "").replace(" ", ""))
                 except ValueError:
                     pass
                 else:
                     num_quant_ranges_found += 1
+                    # check if this can be a year range
+                    try:
+                        first_int = int(first.replace(",", "").replace(" ", ""))
+                        second_int = int(second.replace(",", "").replace(" ", ""))
+                    except ValueError:
+                        pass
+                    else:
+                        if first_int >= self.year_bounds[0] and first_int <= self.year_bounds[1] and second_int >= self.year_bounds[0] and second_int <= self.year_bounds[1]:
+                            num_can_be_years_found += 1
         if num_quant_ranges_found >= self.threshold_for_match * records_to_check:
-            if header.lower() == "year" or header.lower() == "years":
+            if num_can_be_years_found >= self.threshold_for_match * records_to_check:
+                return "TEMPORAL_RANGE"
+            elif header.lower() == "year" or header.lower() == "years" or header.lower() == "date" or header.lower() == "period":
                 return "TEMPORAL_RANGE"
             else:
                 return "QUANT_RANGE"
@@ -155,7 +170,7 @@ class Classifier:
         for record_idx in range(records_to_check):
             try:
                 quant = ureg.parse_expression(records[record_idx])
-            except:
+            except (pint.errors.UndefinedUnitError, pint.errors.DefinitionSyntaxError, AttributeError):
                 continue
             if isinstance(quant, int) or isinstance(quant, float):  # already a number, no units
                 continue
@@ -190,43 +205,49 @@ class Classifier:
         are_ints = False
         num_floats_found = 0
         num_ints_found = 0
+        num_can_be_years_found = 0
         for record_idx in range(records_to_check):
             try:
-                float(records[record_idx].replace(",", ""))
+                float(records[record_idx].replace(",", "").replace(" ", ""))
             except ValueError:
                 pass
             else:
                 num_floats_found += 1
                 try:
-                    int(records[record_idx].replace(",", ""))
+                    val = int(records[record_idx].replace(",", "").replace(" ", ""))
                 except ValueError:
                     pass
                 else:
                     num_ints_found += 1
+                    if val >= self.year_bounds[0] and val <= self.year_bounds[1]:
+                        num_can_be_years_found += 1
         if num_floats_found >= self.threshold_for_match * records_to_check:
             are_floats = True
             if num_ints_found >= self.threshold_for_match * records_to_check:
                 are_ints = True
+                if num_can_be_years_found >= self.threshold_for_match * records_to_check:
+                    return "TEMPORAL"
 
         if not are_floats:
             return "STRING"
-        elif are_floats and not are_ints:
-            if find_whole_word("usd")(header) != None or "($)" in header:
+        else:  # are at least floats, may be ints
+            if find_whole_word("usd")(header) != None or find_whole_word("money")(header) != None or find_whole_word("earnings")(header) != None or "($)" in header or "( $ )" in header:
                 return "QUANT_MONEY"
             elif find_whole_word("pct")(header) != None or find_whole_word("percent")(header) != None or find_whole_word("percentage")(header) != None:
                 return "QUANT_PERCENT"
-            elif find_whole_word("length")(header) != None or find_whole_word("distance")(header) != None:
+            elif find_whole_word("length")(header) != None or find_whole_word("distance")(header) != None or find_whole_word("height")(header) != None or find_whole_word("width")(header) != None:
                 return "QUANT_LENGTH"
             elif find_whole_word("area")(header) != None:
                 return "QUANT_AREA"
-            elif find_whole_word("speed")(header) != None:
+            elif find_whole_word("speed")(header) != None or find_whole_word("velocity")(header) != None:
                 return "QUANT_SPEED"
             else:
-                return "QUANT_OTHER"
-        else:  # are_ints
-            # a lot more parsing here
-            # check for years in temporal
-            # check for possible categorical if all integers
-            # check for units in the header
-            # check for normality of the data as well
-            return "TBD"
+                if are_ints:  # ints, and not matching any header unit
+                    if header.lower() == "year" or header.lower() == "years" or header.lower() == "date":
+                        return "TEMPORAL"
+                    elif "zip code" in header.lower():  # any other common exception can be placed here
+                        return "STRING"
+                    else:
+                        return "QUANT_OTHER"
+                else:  # floats but not ints, and not matching any header unit
+                    return "QUANT_OTHER"
