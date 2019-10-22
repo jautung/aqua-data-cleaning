@@ -19,7 +19,7 @@ class Classifier:
     def __init__(self, max_records_checked=None,
                        threshold_for_match=1.0,
                        ordinal_bound=1000,
-                       categorical_distinctness_threshold=0.1,
+                       categorical_distinctness_threshold=0.2,
                        year_bounds=(1000, 3000)):
         self.max_records_checked = max_records_checked
         self.threshold_for_match = threshold_for_match
@@ -95,7 +95,7 @@ class Classifier:
                     pass
                 else:
                     num_temporals_found += 1
-        if num_temporals_found >= self.threshold_for_match * records_to_check:
+        if num_temporals_found >= self.threshold_for_match * records_to_check and "score" not in header.lower():
             return "TEMPORAL"
 
         # temporal range checker
@@ -109,12 +109,13 @@ class Classifier:
                     float(second.replace(",", "").replace(" ", ""))
                 except ValueError:
                     try:
-                        dateutil.parser.parse(first)
-                        dateutil.parser.parse(second)
+                        first_date = dateutil.parser.parse(first)
+                        second_date = dateutil.parser.parse(second)
                     except ValueError:
                         pass
                     else:
-                        num_temporal_ranges_found += 1
+                        if second_date >= first_date:  # only makes sense for a range
+                            num_temporal_ranges_found += 1
         if num_temporal_ranges_found >= self.threshold_for_match * records_to_check:
             return "TEMPORAL_RANGE"
 
@@ -125,21 +126,22 @@ class Classifier:
             if records[record_idx].count("-") == 1:
                 (first, second) = records[record_idx].split("-")
                 try:
-                    float(first.replace(",", "").replace(" ", ""))
-                    float(second.replace(",", "").replace(" ", ""))
+                    first_float = float(first.replace(",", "").replace(" ", ""))
+                    second_float = float(second.replace(",", "").replace(" ", ""))
                 except ValueError:
                     pass
                 else:
-                    num_quant_ranges_found += 1
-                    # check if this can be a year range
-                    try:
-                        first_int = int(first.replace(",", "").replace(" ", ""))
-                        second_int = int(second.replace(",", "").replace(" ", ""))
-                    except ValueError:
-                        pass
-                    else:
-                        if first_int >= self.year_bounds[0] and first_int <= self.year_bounds[1] and second_int >= self.year_bounds[0] and second_int <= self.year_bounds[1]:
-                            num_can_be_years_found += 1
+                    if second_float >= first_float:  # only makes sense for a range
+                        num_quant_ranges_found += 1
+                        # check if this can be a year range
+                        try:
+                            first_int = int(first.replace(",", "").replace(" ", ""))
+                            second_int = int(second.replace(",", "").replace(" ", ""))
+                        except ValueError:
+                            pass
+                        else:
+                            if first_int >= self.year_bounds[0] and first_int <= self.year_bounds[1] and second_int >= self.year_bounds[0] and second_int <= self.year_bounds[1]:
+                                num_can_be_years_found += 1
         if num_quant_ranges_found >= self.threshold_for_match * records_to_check:
             if num_can_be_years_found >= self.threshold_for_match * records_to_check:
                 return "TEMPORAL_RANGE"
@@ -187,6 +189,9 @@ class Classifier:
                     return "QUANT_AREA"
                 elif len(dim) == 2 and dim.get("[length]") == 1 and dim.get("[time]") == -1:
                     return "QUANT_SPEED"
+                elif len(dim) == 3 and dim.get("[length]") == -1 and dim.get("[time]") == 1 and dim.get("[mass]") == -1:
+                    # this is slightly hard-coding, but pint seems to recognize <length>/h as <length>/planck_constant, which resolves to this
+                    return "QUANT_SPEED"
                 else:  # some unit that we don't know about, or don't want to parse
                     return "STRING"
 
@@ -225,7 +230,7 @@ class Classifier:
             are_floats = True
             if num_ints_found >= self.threshold_for_match * records_to_check:
                 are_ints = True
-                if num_can_be_years_found >= self.threshold_for_match * records_to_check:
+                if num_can_be_years_found >= self.threshold_for_match * records_to_check and not "code" in header.lower() and not "zip" in header.lower() and not "postal code" in header.lower():
                     return "TEMPORAL"
 
         if not are_floats:
@@ -235,7 +240,7 @@ class Classifier:
                 return "QUANT_MONEY"
             elif find_whole_word("pct")(header) != None or find_whole_word("percent")(header) != None or find_whole_word("percentage")(header) != None:
                 return "QUANT_PERCENT"
-            elif find_whole_word("length")(header) != None or find_whole_word("distance")(header) != None or find_whole_word("height")(header) != None or find_whole_word("width")(header) != None:
+            elif find_whole_word("length")(header) != None or find_whole_word("distance")(header) != None or find_whole_word("height")(header) != None or find_whole_word("width")(header) != None or find_whole_word("breadth")(header) != None:
                 return "QUANT_LENGTH"
             elif find_whole_word("area")(header) != None:
                 return "QUANT_AREA"
@@ -245,7 +250,7 @@ class Classifier:
                 if are_ints:  # ints, and not matching any header unit
                     if header.lower() == "year" or header.lower() == "years" or header.lower() == "date":
                         return "TEMPORAL"
-                    elif "zip code" in header.lower():  # any other common exception can be placed here
+                    elif "code" in header.lower() or "zip" in header.lower() or "postal code" in header.lower():
                         return "STRING"
                     else:
                         return "QUANT_OTHER"
