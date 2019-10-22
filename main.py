@@ -4,7 +4,7 @@ import normalizer
 
 # runs the classifier and the normalizer on all data tables, up to a limit of num_tables
 # prints to stdout the result for all columns that got classified into one of the filter_categories
-def classify_normalize_all(num_tables=None, filter_categories=[]):
+def classify_then_normalize(num_tables=None, filter_categories=[]):
     rdr = reader.Reader()
     clssfr = classifier.Classifier()
     nmlzr = normalizer.Normalizer()
@@ -90,4 +90,5 @@ def classification_test(verbose=True):
     print("Overall result:", str(correct_count) + "/" + str(total_count), "(" + str(round(correct_count / total_count * 100, 2)) + "%)", "correct classifications")
 
 if __name__ == "__main__":
-    classify_normalize_all(500, ["TEMPORAL"])
+    # classify_then_normalize(500, ["TEMPORAL_RANGE"])
+    classification_test(False)

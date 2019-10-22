@@ -2,6 +2,7 @@ import os
 import csv
 import json
 
+# just a convenient data structure to associate the different physical files together
 class DataTable:
     def __init__(self, csv_file, meta_file, types_file):
         self.csv_file = csv_file
@@ -19,9 +20,9 @@ class DataTable:
                 except IndexError:  # col_idx out of bounds
                     return None
                 if header == None:
-                    header = value
+                    header = value.strip()
                 else:
-                    col.append(value)
+                    col.append(value.strip())
         return (header, col)
 
     def get_meta(self):
@@ -49,7 +50,6 @@ class Reader:
     def get_data_tables(self, limit=None):
         data_tables = []
         num_data_tables = 0
-
         folders = [folder for folder in os.listdir(".") if os.path.isdir(folder)]
         for folder in folders:
             files = set(os.listdir(folder))
@@ -68,12 +68,12 @@ class Reader:
                     num_data_tables += 1
                     if limit != None and num_data_tables >= limit:
                         return data_tables
-
         return data_tables
 
-    # returns a list of test DataTables, i.e. csv files that have been correctly classified
+    # returns a list of test DataTables
+    # these are csv files that have been correctly (manually) classified
     def get_classifier_test_data_tables(self):
-        data_tables = []
+        test_data_tables = []
         folders = [folder for folder in os.listdir(".") if os.path.isdir(folder)]
         for folder in folders:
             files = set(os.listdir(folder))
@@ -82,5 +82,5 @@ class Reader:
                 if extension == ".test":
                     test_filepath = os.path.join(folder, file)
                     csv_filepath = os.path.join(folder, filename + ".csv")
-                    data_tables.append(DataTable(csv_filepath, None, test_filepath))
-        return data_tables
+                    test_data_tables.append(DataTable(csv_filepath, None, test_filepath))
+        return test_data_tables
