@@ -3,6 +3,7 @@ import re
 import itertools
 import dateutil.parser
 import datetime
+import pint
 
 class Normalizer:
     # @ordinal_bound: bound for which we will be able to recognize ordinals
@@ -20,7 +21,7 @@ class Normalizer:
         # correct date according to dateutil.parser
         try:
             date = dateutil.parser.parse(date_str)
-        except ValueError:  # unable to parse date_str as a date in the first place
+        except:  # unable to parse date_str as a date in the first place
             return ([], [])
 
         # decomposing possible components of the correct date
@@ -89,38 +90,12 @@ class Normalizer:
 
         return (valid_specifier_strs, valid_specifier_types)
 
-    ############################################################################
-    # returns (norm_records)
-    def normalize_ordinal(self, header, records):
-        norm_records = []
-        for record in records:
-            if record.lower() in self.ordinal_normalizer_dict:
-                norm_records.append(self.ordinal_normalizer_dict[record.lower()])
-            else:
-                try:
-                    norm_records.append(int(float(record.replace(",", "").replace(" ", ""))))
-                except ValueError:
-                    norm_records.append(record)
-        return norm_records
-
-    ############################################################################
-    # returns (norm_records, vega_lite_timeunit)
-    def normalize_temporal(self, header, records):
-        # finding most common date format applicable throughout list of records
-        date_formats_arr = [self.find_candidate_date_formats(record) for record in records]
-        date_formats_used = dict()
-        date_formats_to_specifier_types = dict()
-        for (date_formats, specifier_types) in date_formats_arr:
-            for i in range(len(date_formats)):
-                date_formats_used[date_formats[i]] = date_formats_used.get(date_formats[i], 0) + 1
-                date_formats_to_specifier_types[date_formats[i]] = specifier_types[i]
-        if len(date_formats_used) == 0:  # no candidate date formats throughout records
-            return (records, None)
-        sorted_date_formats = [x[0] for x in sorted(date_formats_used.items(), key=lambda x: x[1], reverse=True)]
-
-        # based on the most common set of specifier types in records, choose a format to normalize the original list of records into (one recognizable by vega-lite)
-        # set vega_lite_timeunit accordingly (https://vega.github.io/vega-lite/docs/timeunit.html)
-        best_specifier_types = date_formats_to_specifier_types[sorted_date_formats[0]]
+    # auxiliary function
+    # based on the most common set of specifier types in records, choose a format to normalize the original list of records into (one recognizable by vega-lite)
+    # set vega_lite_timeunit accordingly (https://vega.github.io/vega-lite/docs/timeunit.html)
+    def choose_temporal_format(self, best_specifier_types):
+        best_normalized_format = None
+        vega_lite_timeunit = None
         if best_specifier_types == {"Year",}:
             best_normalized_format = "%Y"
             vega_lite_timeunit = "year"
@@ -154,7 +129,40 @@ class Normalizer:
         elif best_specifier_types == {"Hour", "Minute", "Second"}:
             best_normalized_format = "%H:%M:%S"
             vega_lite_timeunit = "hoursminutesseconds"
-        else:  # some other weird combination of specifier types that is very unconventional, do not normalize
+        return (best_normalized_format, vega_lite_timeunit)
+
+    ############################################################################
+    # returns (norm_records)
+    def normalize_ordinal(self, header, records):
+        norm_records = []
+        for record in records:
+            if record.lower() in self.ordinal_normalizer_dict:
+                norm_records.append(self.ordinal_normalizer_dict[record.lower()])
+            else:
+                try:
+                    norm_records.append(int(float(record.replace(",", "").replace(" ", ""))))
+                except ValueError:
+                    norm_records.append(record)
+        return norm_records
+
+    ############################################################################
+    # returns (norm_records, vega_lite_timeunit)
+    def normalize_temporal(self, header, records):
+        # finding most common date format applicable throughout list of records
+        date_formats_arr = [self.find_candidate_date_formats(record) for record in records]
+        date_formats_used = dict()
+        date_formats_to_specifier_types = dict()
+        for (date_formats, specifier_types) in date_formats_arr:
+            for i in range(len(date_formats)):
+                date_formats_used[date_formats[i]] = date_formats_used.get(date_formats[i], 0) + 1
+                date_formats_to_specifier_types[date_formats[i]] = specifier_types[i]
+        if len(date_formats_used) == 0:  # no candidate date formats throughout records
+            return (records, None)
+        sorted_date_formats = [x[0] for x in sorted(date_formats_used.items(), key=lambda x: x[1], reverse=True)]
+
+        best_specifier_types = date_formats_to_specifier_types[sorted_date_formats[0]]
+        (best_normalized_format, vega_lite_timeunit) = self.choose_temporal_format(best_specifier_types)
+        if best_normalized_format == None: # some other weird combination of specifier types that is very unconventional, do not normalize
             return (records, None)
 
         # normalizing records, taking precedence of date formats based on order in sorted_date_formats
@@ -175,7 +183,64 @@ class Normalizer:
     ############################################################################
     # returns (norm_records_starts, norm_records_ends, vega_lite_timeunit)
     def normalize_temporal_range(self, header, records):
-        return (records, records, "")
+        # splitting the range
+        records_start = []
+        records_end = []
+        for record in records:
+            if record.count("-") == 1:
+                (start, end) = record.split("-")
+                records_start.append(start.strip())
+                records_end.append(end.strip())
+            else:
+                records_start.append(record)
+                records_end.append(None)
+
+        # finding most common date format applicable throughout list of records
+        date_formats_arr_start = [self.find_candidate_date_formats(record) for record in records_start]
+        date_formats_arr_end = [self.find_candidate_date_formats(record) for record in records_end]
+        date_formats_used = dict()
+        date_formats_to_specifier_types = dict()
+        for (date_formats, specifier_types) in (date_formats_arr_start + date_formats_arr_end):
+            for i in range(len(date_formats)):
+                date_formats_used[date_formats[i]] = date_formats_used.get(date_formats[i], 0) + 1
+                date_formats_to_specifier_types[date_formats[i]] = specifier_types[i]
+        if len(date_formats_used) == 0:  # no candidate date formats throughout records
+            return (records, [], None)
+        sorted_date_formats = [x[0] for x in sorted(date_formats_used.items(), key=lambda x: x[1], reverse=True)]
+
+        best_specifier_types = date_formats_to_specifier_types[sorted_date_formats[0]]
+        (best_normalized_format, vega_lite_timeunit) = self.choose_temporal_format(best_specifier_types)
+        if best_normalized_format == None: # some other weird combination of specifier types that is very unconventional, do not normalize
+            return (records, [], None)
+
+        # normalizing records, taking precedence of date formats based on order in sorted_date_formats
+        norm_records_starts = []
+        norm_records_ends = []
+        for record_idx in range(len(records)):
+            start_done = False
+            end_done = False
+            if date_formats_arr_start[record_idx] == ([], []):  # cannot be parsed
+                norm_records_starts.append(records_start[record_idx])
+                start_done = True
+            if date_formats_arr_end[record_idx] == ([], []):  # cannot be parsed
+                norm_records_ends.append(records_end[record_idx])
+                end_done = True
+            if not start_done or not end_done:
+                for date_format in sorted_date_formats:  # precedence
+                    if not start_done and date_format in date_formats_arr_start[record_idx][0]:  # current record can be read in that format
+                        unpadded_date_format = date_format.replace("%-", "%")
+                        dt = datetime.datetime.strptime(records_start[record_idx], unpadded_date_format)
+                        norm_records_starts.append(dt.strftime(best_normalized_format))
+                        start_done = True
+                    if not end_done and date_format in date_formats_arr_end[record_idx][0]:  # current record can be read in that format
+                        unpadded_date_format = date_format.replace("%-", "%")
+                        dt = datetime.datetime.strptime(records_end[record_idx], unpadded_date_format)
+                        norm_records_ends.append(dt.strftime(best_normalized_format))
+                        end_done = True
+                    if start_done and end_done:
+                        break
+
+        return (norm_records_starts, norm_records_ends, vega_lite_timeunit)
 
     ############################################################################
     # returns (norm_records, units)
@@ -189,26 +254,61 @@ class Normalizer:
                     norm_records.append(0)
                 else:
                     norm_records.append(record)
-        return (norm_records, "")
+        most_common_currencies = ["usd", "eur", "jpy", "gbp", "aud", "cad", "chf", "cny", "hkd", "nzd"]
+        currency = None
+        for curr in most_common_currencies:
+            if curr in header.lower():
+                currency = curr
+                break
+        return (norm_records, currency)
 
     ############################################################################
     # returns (norm_records)
     def normalize_percent(self, header, records):
         norm_records = []
+        num_above_one = 0  # to determine if this is given as decimal or percentage
+        num_below_one = 0
         for record in records:
             try:
-                norm_records.append(float(record.replace("%", "")))
+                val = float(record.replace("%", ""))
             except ValueError:
                 if record == "":  # this assumes that an empty string means 0
                     norm_records.append(0)
                 else:
                     norm_records.append(record)
-        return norm_records
+            else:
+                norm_records.append(val)
+                if val > 1:
+                    num_above_one += 1
+                else:
+                    num_below_one += 1
+        if num_below_one > num_above_one:
+            return [record * 100 for record in norm_records]  # decimal to percentage
+        else:
+            return norm_records
 
     ############################################################################
     # returns (norm_records, units)
     def normalize_quant_units(self, header, records):
-        return (records, "")
+        ureg = pint.UnitRegistry()
+        norm_records = []
+        freq_of_units = dict()
+        for record in records:
+            try:
+                quant = ureg.parse_expression(record)
+            except:  # would like to give exact errors here but there are far too many to handle
+                norm_records.append(record)
+            else:
+                if isinstance(quant, int) or isinstance(quant, float):  # already a number, no units
+                    norm_records.append(quant)
+                else:
+                    norm_records.append(quant.magnitude)
+                    freq_of_units[quant.units] = freq_of_units.get(quant.units, 0) + 1
+        if len(freq_of_units) > 0:  # most common unit among records
+            ret_units = str(sorted(freq_of_units.items(), key=lambda x: x[1], reverse=True)[0][0])
+        else:
+            ret_units = header.replace("\n", " ").split(" ")[-1].replace("(", "").replace(")", "").replace("[", "").replace("]", "")  # hopefully the header contains the unit
+        return (norm_records, ret_units)
 
     ############################################################################
     # returns (norm_records)
@@ -216,18 +316,35 @@ class Normalizer:
         norm_records = []
         for record in records:
             try:
-                norm_records.append(int(float(record.replace(",", "").replace(" ", ""))))
+                record_float = float(record.replace(",", "").replace(" ", ""))
             except ValueError:
                 if record == "":  # this assumes that an empty string means 0
                     norm_records.append(0)
                 else:
                     norm_records.append(record)
+            else:
+                if record_float.is_integer():
+                    norm_records.append(int(record_float))
+                else:
+                    norm_records.append(record_float)
         return norm_records
 
     ############################################################################
     # returns (norm_records_starts, norm_records_ends)
     def normalize_quant_range(self, header, records):
-        return (records, records)
+        # splitting the range
+        records_start = []
+        records_end = []
+        for record in records:
+            if record.count("-") == 1:
+                (start, end) = record.split("-")
+                records_start.append(start.strip())
+                records_end.append(end.strip())
+            else:
+                records_start.append(record)
+                records_end.append("")
+
+        return (self.normalize_quant_default(header, records_start), self.normalize_quant_default(header, records_end))
 
     ############################################################################
     # returns (norm_records)

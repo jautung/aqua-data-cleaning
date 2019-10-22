@@ -108,5 +108,5 @@ def classification_test(verbose=True):
     print("Overall result:", str(correct_count) + "/" + str(total_count), "(" + str(round(correct_count / total_count * 100, 2)) + "%)", "correct classifications")
 
 if __name__ == "__main__":
-    classify_then_normalize(50, ["TEMPORAL"])
-    # classification_test(False)
+    classify_then_normalize(None, ["ROW_NUM", "ORDINAL", "TEMPORAL", "TEMPORAL_RANGE", "QUANT_MONEY", "QUANT_PERCENT", "QUANT_LENGTH", "QUANT_AREA", "QUANT_SPEED", "QUANT_OTHER", "QUANT_RANGE", "CATEGORICAL", "STRING"])
+    # classification_test(True)
