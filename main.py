@@ -20,19 +20,32 @@ def classify_then_normalize(num_tables=None, filter_categories=[]):
             (header, records) = col
             category = clssfr.classify(col_idx, header, records)
 
-            if category == "ORDINAL":
-                norm_records = nmlzr.normalize_ordinal(records)
-            elif category == "TEMPORAL":
-                (norm_records, vega_lite_timeunit) = nmlzr.normalize_temporal(records)
-            elif category == "QUANT_MONEY":
-                norm_records = nmlzr.normalize_money(records)
-            elif category == "QUANT_PERCENT":
-                norm_records = nmlzr.normalize_percentage(records)
-            else:  # other categories
-                norm_records = nmlzr.normalize_default(records)
-
             # filtering of results
             if category in filter_categories:
+                if category == "ROW_NUM":
+                    norm_records = nmlzr.normalize_quant_default(header, records)
+                elif category == "ORDINAL":
+                    norm_records = nmlzr.normalize_ordinal(header, records)
+                elif category == "TEMPORAL":
+                    (norm_records, vega_lite_timeunit) = nmlzr.normalize_temporal(header, records)
+                elif category == "TEMPORAL_RANGE":
+                    (norm_records_starts, norm_records_ends, vega_lite_timeunit) = nmlzr.normalize_temporal_range(header, records)
+                elif category == "QUANT_MONEY":
+                    (norm_records, units) = nmlzr.normalize_money(header, records)
+                elif category == "QUANT_PERCENT":
+                    norm_records = nmlzr.normalize_percent(header, records)
+                    units = "%"
+                elif category == "QUANT_LENGTH" or category == "QUANT_AREA" or category == "QUANT_SPEED":
+                    (norm_records, units) = nmlzr.normalize_quant_units(header, records)
+                elif category == "QUANT_OTHER":
+                    norm_records = nmlzr.normalize_quant_default(header, records)
+                    units = None
+                elif category == "QUANT_RANGE":
+                    (norm_records_starts, norm_records_ends) = nmlzr.normalize_quant_range(header, records)
+                    units = None
+                else:  # CATEGORICAL and STRING
+                    norm_records = nmlzr.normalize_default(header, records)
+
                 print("====================================================================================")
                 print("Column      :", data_table.csv_file, "(Column " + str(col_idx) + ")")
                 print("Header      :", repr(header))
@@ -42,11 +55,16 @@ def classify_then_normalize(num_tables=None, filter_categories=[]):
                 print("Original    :", records)
                 print()
 
-                print("Current type:", data_table.get_type(col_idx))
-                print("New type    :", category)
-                print("Normalized  :", norm_records)
-                if category == "TEMPORAL":
+                print("Classified  :", category)
+                if category.endswith("_RANGE"):
+                    print("Normalized s:", norm_records_starts)
+                    print("Normalized e:", norm_records_ends)
+                else:
+                    print("Normalized  :", norm_records)
+                if category.startswith("TEMPORAL"):
                     print("VL timeunit :", vega_lite_timeunit)
+                elif category.startswith("QUANT_"):
+                    print("Units       :", units)
                 print()
 
             col_idx += 1
@@ -90,5 +108,5 @@ def classification_test(verbose=True):
     print("Overall result:", str(correct_count) + "/" + str(total_count), "(" + str(round(correct_count / total_count * 100, 2)) + "%)", "correct classifications")
 
 if __name__ == "__main__":
-    # classify_then_normalize(500, ["TEMPORAL_RANGE"])
-    classification_test(False)
+    classify_then_normalize(50, ["TEMPORAL"])
+    # classification_test(False)

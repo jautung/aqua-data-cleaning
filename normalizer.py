@@ -12,13 +12,9 @@ class Normalizer:
             self.ordinal_normalizer_dict[num2words.num2words(i, to="ordinal").lower()] = i
             self.ordinal_normalizer_dict[num2words.num2words(i, to="ordinal_num")] = i
 
-    # returns just the normalized list of records
-    def normalize_ordinal(self, records):
-        return [self.ordinal_normalizer_dict[record.lower()] if record.lower() in self.ordinal_normalizer_dict else record for record in records]
-
+    # auxiliary function
     # adapted from https://stackoverflow.com/questions/53892450/get-the-format-in-dateutil-parse
-    # leverages dateutil.parser's parse function
-    # then matches returned date against tokens of date_str (backwards engineering)
+    # leverages dateutil.parser's parse function, then matches returned date against tokens of date_str (backwards engineering)
     # returns a tuple of equal-length lists (specifier_strings, specifier_types_used)
     def find_candidate_date_formats(self, date_str):
         # correct date according to dateutil.parser
@@ -93,8 +89,23 @@ class Normalizer:
 
         return (valid_specifier_strs, valid_specifier_types)
 
-    # returns the tuple (normalized list of records, best vega-lite time unit)
-    def normalize_temporal(self, records):
+    ############################################################################
+    # returns (norm_records)
+    def normalize_ordinal(self, header, records):
+        norm_records = []
+        for record in records:
+            if record.lower() in self.ordinal_normalizer_dict:
+                norm_records.append(self.ordinal_normalizer_dict[record.lower()])
+            else:
+                try:
+                    norm_records.append(int(float(record.replace(",", "").replace(" ", ""))))
+                except ValueError:
+                    norm_records.append(record)
+        return norm_records
+
+    ############################################################################
+    # returns (norm_records, vega_lite_timeunit)
+    def normalize_temporal(self, header, records):
         # finding most common date format applicable throughout list of records
         date_formats_arr = [self.find_candidate_date_formats(record) for record in records]
         date_formats_used = dict()
@@ -107,10 +118,8 @@ class Normalizer:
             return (records, None)
         sorted_date_formats = [x[0] for x in sorted(date_formats_used.items(), key=lambda x: x[1], reverse=True)]
 
-        # based on the most common set of specifier types in records
-        # choose a format to normalize the original list of records into (one recognizable by vega-lite)
+        # based on the most common set of specifier types in records, choose a format to normalize the original list of records into (one recognizable by vega-lite)
         # set vega_lite_timeunit accordingly (https://vega.github.io/vega-lite/docs/timeunit.html)
-        # hard-coded
         best_specifier_types = date_formats_to_specifier_types[sorted_date_formats[0]]
         if best_specifier_types == {"Year",}:
             best_normalized_format = "%Y"
@@ -163,7 +172,14 @@ class Normalizer:
 
         return (norm_records, vega_lite_timeunit)
 
-    def normalize_money(self, records):
+    ############################################################################
+    # returns (norm_records_starts, norm_records_ends, vega_lite_timeunit)
+    def normalize_temporal_range(self, header, records):
+        return (records, records, "")
+
+    ############################################################################
+    # returns (norm_records, units)
+    def normalize_money(self, header, records):
         norm_records = []
         for record in records:
             try:
@@ -173,9 +189,11 @@ class Normalizer:
                     norm_records.append(0)
                 else:
                     norm_records.append(record)
-        return norm_records
+        return (norm_records, "")
 
-    def normalize_percentage(self, records):
+    ############################################################################
+    # returns (norm_records)
+    def normalize_percent(self, header, records):
         norm_records = []
         for record in records:
             try:
@@ -187,5 +205,31 @@ class Normalizer:
                     norm_records.append(record)
         return norm_records
 
-    def normalize_default(self, records):
-        return [record.strip() for record in records]
+    ############################################################################
+    # returns (norm_records, units)
+    def normalize_quant_units(self, header, records):
+        return (records, "")
+
+    ############################################################################
+    # returns (norm_records)
+    def normalize_quant_default(self, header, records):
+        norm_records = []
+        for record in records:
+            try:
+                norm_records.append(int(float(record.replace(",", "").replace(" ", ""))))
+            except ValueError:
+                if record == "":  # this assumes that an empty string means 0
+                    norm_records.append(0)
+                else:
+                    norm_records.append(record)
+        return norm_records
+
+    ############################################################################
+    # returns (norm_records_starts, norm_records_ends)
+    def normalize_quant_range(self, header, records):
+        return (records, records)
+
+    ############################################################################
+    # returns (norm_records)
+    def normalize_default(self, header, records):
+        return records

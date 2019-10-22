@@ -3,10 +3,6 @@ import dateutil.parser
 import pint
 import re
 
-# taken from https://stackoverflow.com/questions/5319922/python-check-if-word-is-in-a-string
-def find_whole_word(w):
-    return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
-
 class Classifier:
     # @max_records_checked: max number of records we check for a specific format
     #   - higher values mean more accuracy, but slower program execution
@@ -29,6 +25,10 @@ class Classifier:
             self.ordinals.add(num2words.num2words(i, to="ordinal_num"))
         self.categorical_distinctness_threshold = categorical_distinctness_threshold
         self.year_bounds = year_bounds
+
+    # taken from https://stackoverflow.com/questions/5319922/python-check-if-word-is-in-a-string
+    def find_whole_word(self, w):
+        return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
 
     # @col_idx: the column index in a DataTable
     # @header: the column header in a DataTable
@@ -135,8 +135,8 @@ class Classifier:
                         num_quant_ranges_found += 1
                         # check if this can be a year range
                         try:
-                            first_int = int(first.replace(",", "").replace(" ", ""))
-                            second_int = int(second.replace(",", "").replace(" ", ""))
+                            first_int = int(float(first.replace(",", "").replace(" ", "")))
+                            second_int = int(float(second.replace(",", "").replace(" ", "")))
                         except ValueError:
                             pass
                         else:
@@ -172,7 +172,7 @@ class Classifier:
         for record_idx in range(records_to_check):
             try:
                 quant = ureg.parse_expression(records[record_idx])
-            except (pint.errors.UndefinedUnitError, pint.errors.DefinitionSyntaxError, AttributeError):
+            except:  # would like to give exact errors here but there are far too many to handle
                 continue
             if isinstance(quant, int) or isinstance(quant, float):  # already a number, no units
                 continue
@@ -219,7 +219,7 @@ class Classifier:
             else:
                 num_floats_found += 1
                 try:
-                    val = int(records[record_idx].replace(",", "").replace(" ", ""))
+                    val = int(float(records[record_idx].replace(",", "").replace(" ", "")))
                 except ValueError:
                     pass
                 else:
@@ -236,15 +236,15 @@ class Classifier:
         if not are_floats:
             return "STRING"
         else:  # are at least floats, may be ints
-            if find_whole_word("usd")(header) != None or find_whole_word("money")(header) != None or find_whole_word("earnings")(header) != None or "($)" in header or "( $ )" in header:
+            if self.find_whole_word("usd")(header) != None or self.find_whole_word("money")(header) != None or self.find_whole_word("earnings")(header) != None or "($)" in header or "( $ )" in header:
                 return "QUANT_MONEY"
-            elif find_whole_word("pct")(header) != None or find_whole_word("percent")(header) != None or find_whole_word("percentage")(header) != None:
+            elif self.find_whole_word("pct")(header) != None or self.find_whole_word("percent")(header) != None or self.find_whole_word("percentage")(header) != None:
                 return "QUANT_PERCENT"
-            elif find_whole_word("length")(header) != None or find_whole_word("distance")(header) != None or find_whole_word("height")(header) != None or find_whole_word("width")(header) != None or find_whole_word("breadth")(header) != None:
+            elif self.find_whole_word("length")(header) != None or self.find_whole_word("distance")(header) != None or self.find_whole_word("height")(header) != None or self.find_whole_word("width")(header) != None or self.find_whole_word("breadth")(header) != None:
                 return "QUANT_LENGTH"
-            elif find_whole_word("area")(header) != None:
+            elif self.find_whole_word("area")(header) != None:
                 return "QUANT_AREA"
-            elif find_whole_word("speed")(header) != None or find_whole_word("velocity")(header) != None:
+            elif self.find_whole_word("speed")(header) != None or self.find_whole_word("velocity")(header) != None:
                 return "QUANT_SPEED"
             else:
                 if are_ints:  # ints, and not matching any header unit
