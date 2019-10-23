@@ -16,7 +16,7 @@ class Classifier:
                        threshold_for_match=1.0,
                        ordinal_bound=1000,
                        categorical_distinctness_threshold=0.2,
-                       year_bounds=(1000, 3000)):
+                       year_bounds=(1000, 2100)):
         self.max_records_checked = max_records_checked
         self.threshold_for_match = threshold_for_match
         self.ordinals = set()
